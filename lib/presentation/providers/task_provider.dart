@@ -1,12 +1,20 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_application_ai/domain/entities/task.dart';
-import 'package:flutter_application_ai/data/repositories/task_repository.dart';
 import 'package:flutter_application_ai/domain/enums/priority_level.dart';
 import 'package:flutter_application_ai/domain/enums/task_status.dart';
+import 'package:flutter_application_ai/data/datasources/local/firebase_task_repository.dart';
 
-final taskRepositoryProvider = Provider((ref) => TaskRepository());
+// ── Repository provider (swap local ↔ Firebase tại đây) ───────────────────
+final taskRepositoryProvider = Provider<FirebaseTaskRepository>(
+  (ref) => FirebaseTaskRepository(),
+);
 
-// ── Main Task List ─────────────────────────────────────────────────────────
+// ── Stream-based task list (real-time Firestore) ───────────────────────────
+final taskStreamProvider = StreamProvider<List<Task>>((ref) {
+  return ref.watch(taskRepositoryProvider).watchTasks();
+});
+
+// ── AsyncNotifier (để addTask / toggleComplete mutate state) ───────────────
 final taskListProvider =
     AsyncNotifierProvider<TaskListNotifier, List<Task>>(() {
   return TaskListNotifier();
@@ -15,35 +23,38 @@ final taskListProvider =
 class TaskListNotifier extends AsyncNotifier<List<Task>> {
   @override
   Future<List<Task>> build() async {
+    // Listen to real-time stream, update state automatically
+    ref.listen(taskStreamProvider, (_, next) {
+      next.whenData((tasks) => state = AsyncData(tasks));
+    });
     return ref.read(taskRepositoryProvider).getTasks();
   }
 
   Future<void> addTask(Task task) async {
-    state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() async {
-      await ref.read(taskRepositoryProvider).addTask(task);
-      return ref.read(taskRepositoryProvider).getTasks();
-    });
+    await ref.read(taskRepositoryProvider).addTask(task);
+    // Stream sẽ tự update state thông qua watchTasks
   }
 
   Future<void> toggleComplete(String taskId) async {
     final current = state.value ?? [];
-    final updated = current.map((t) {
-      if (t.id != taskId) return t;
-      final isDone = t.status == TaskStatus.done;
-      return t.copyWith(
-        status: isDone ? TaskStatus.todo : TaskStatus.done,
-        updatedAt: DateTime.now(),
-      );
-    }).toList();
-    state = AsyncData(updated);
+    final task = current.firstWhere((t) => t.id == taskId);
+    final isDone = task.status == TaskStatus.done;
+    final updated = task.copyWith(
+      status: isDone ? TaskStatus.todo : TaskStatus.done,
+      updatedAt: DateTime.now(),
+    );
+    await ref.read(taskRepositoryProvider).updateTask(updated);
+  }
+
+  Future<void> deleteTask(String taskId) async {
+    await ref.read(taskRepositoryProvider).deleteTask(taskId);
   }
 }
 
 // ── Filter Enum ────────────────────────────────────────────────────────────
 enum TaskFilter { today, week, all }
 
-// ── Selected Category (Notifier instead of StateProvider) ─────────────────
+// ── Notifier providers (Riverpod 3) ───────────────────────────────────────
 class SelectedCategoryNotifier extends Notifier<String?> {
   @override
   String? build() => null;
@@ -54,7 +65,6 @@ final selectedCategoryProvider =
     NotifierProvider<SelectedCategoryNotifier, String?>(
         SelectedCategoryNotifier.new);
 
-// ── Task Filter Notifier ────────────────────────────────────────────────────
 class TaskFilterNotifier extends Notifier<TaskFilter> {
   @override
   TaskFilter build() => TaskFilter.today;
@@ -78,9 +88,7 @@ final filteredTasksProvider = Provider<List<Task>>((ref) {
     if (categoryId != null && categoryId != 'all') {
       if (task.categoryId != categoryId) return false;
     }
-    if (task.dueDate == null) {
-      return filter == TaskFilter.all;
-    }
+    if (task.dueDate == null) return filter == TaskFilter.all;
     final d = task.dueDate!;
     return switch (filter) {
       TaskFilter.today => d.year == now.year &&
@@ -115,13 +123,7 @@ final matrixTasksProvider = Provider<Map<PriorityLevel, List<Task>>>((ref) {
     orElse: () => <Task>[],
   );
   return {
-    PriorityLevel.level1:
-        tasks.where((t) => t.priority == PriorityLevel.level1).toList(),
-    PriorityLevel.level2:
-        tasks.where((t) => t.priority == PriorityLevel.level2).toList(),
-    PriorityLevel.level3:
-        tasks.where((t) => t.priority == PriorityLevel.level3).toList(),
-    PriorityLevel.level4:
-        tasks.where((t) => t.priority == PriorityLevel.level4).toList(),
+    for (final level in PriorityLevel.values)
+      level: tasks.where((t) => t.priority == level).toList(),
   };
 });
