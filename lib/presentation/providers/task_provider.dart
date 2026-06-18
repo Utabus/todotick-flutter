@@ -3,18 +3,19 @@ import 'package:flutter_application_ai/domain/entities/task.dart';
 import 'package:flutter_application_ai/domain/enums/priority_level.dart';
 import 'package:flutter_application_ai/domain/enums/task_status.dart';
 import 'package:flutter_application_ai/data/datasources/local/firebase_task_repository.dart';
+import 'package:uuid/uuid.dart';
 
-// ── Repository provider (swap local ↔ Firebase tại đây) ───────────────────
+// ── Repository provider ────────────────────────────────────────────────────
 final taskRepositoryProvider = Provider<FirebaseTaskRepository>(
   (ref) => FirebaseTaskRepository(),
 );
 
-// ── Stream-based task list (real-time Firestore) ───────────────────────────
+// ── Real-time stream từ Firestore ──────────────────────────────────────────
 final taskStreamProvider = StreamProvider<List<Task>>((ref) {
   return ref.watch(taskRepositoryProvider).watchTasks();
 });
 
-// ── AsyncNotifier (để addTask / toggleComplete mutate state) ───────────────
+// ── Main AsyncNotifier ─────────────────────────────────────────────────────
 final taskListProvider =
     AsyncNotifierProvider<TaskListNotifier, List<Task>>(() {
   return TaskListNotifier();
@@ -23,21 +24,111 @@ final taskListProvider =
 class TaskListNotifier extends AsyncNotifier<List<Task>> {
   @override
   Future<List<Task>> build() async {
-    // Listen to real-time stream, update state automatically
+    // Khi stream cập nhật → tự update state
     ref.listen(taskStreamProvider, (_, next) {
       next.whenData((tasks) => state = AsyncData(tasks));
     });
-    return ref.read(taskRepositoryProvider).getTasks();
+
+    final repo = ref.read(taskRepositoryProvider);
+    final existing = await repo.getTasks();
+
+    // Nếu Firestore trống → seed mock data
+    if (existing.isEmpty) {
+      await _seedMockData(repo);
+      return repo.getTasks();
+    }
+
+    return existing;
+  }
+
+  Future<void> _seedMockData(FirebaseTaskRepository repo) async {
+    final now = DateTime.now();
+    final mockTasks = [
+      Task(
+        id: const Uuid().v4(),
+        title: 'Ăn trưa với khách hàng',
+        categoryId: '1',
+        priority: PriorityLevel.level1,
+        status: TaskStatus.todo,
+        dueDate: now,
+        dueTimeStr: '12:00',
+        location: 'Nhà hàng ngon',
+        emoji: '🍽️',
+        createdAt: now,
+        updatedAt: now,
+      ),
+      Task(
+        id: const Uuid().v4(),
+        title: 'Trả lời email của khách hàng',
+        categoryId: '1',
+        priority: PriorityLevel.level1,
+        status: TaskStatus.todo,
+        dueDate: now,
+        dueTimeStr: '09:00',
+        emoji: '📧',
+        createdAt: now,
+        updatedAt: now,
+      ),
+      Task(
+        id: const Uuid().v4(),
+        title: 'Trò chơi bóng rổ',
+        categoryId: '2',
+        priority: PriorityLevel.level3,
+        status: TaskStatus.todo,
+        dueDate: now,
+        dueTimeStr: '19:00',
+        emoji: '🏀',
+        createdAt: now,
+        updatedAt: now,
+      ),
+      Task(
+        id: const Uuid().v4(),
+        title: 'Gặp gỡ bạn bè',
+        categoryId: '2',
+        priority: PriorityLevel.level2,
+        status: TaskStatus.todo,
+        dueDate: now.add(const Duration(days: 1)),
+        emoji: '🍻',
+        createdAt: now,
+        updatedAt: now,
+      ),
+      Task(
+        id: const Uuid().v4(),
+        title: 'Đọc sách',
+        categoryId: '2',
+        priority: PriorityLevel.level4,
+        status: TaskStatus.todo,
+        dueDate: now.add(const Duration(days: 2)),
+        emoji: '📚',
+        createdAt: now,
+        updatedAt: now,
+      ),
+      Task(
+        id: const Uuid().v4(),
+        title: 'Lên kế hoạch cho lịch trình ngày mai',
+        categoryId: '1',
+        priority: PriorityLevel.level2,
+        status: TaskStatus.todo,
+        dueDate: now.add(const Duration(days: 1)),
+        emoji: '📋',
+        createdAt: now,
+        updatedAt: now,
+      ),
+    ];
+
+    for (final task in mockTasks) {
+      await repo.addTask(task);
+    }
   }
 
   Future<void> addTask(Task task) async {
     await ref.read(taskRepositoryProvider).addTask(task);
-    // Stream sẽ tự update state thông qua watchTasks
   }
 
   Future<void> toggleComplete(String taskId) async {
     final current = state.value ?? [];
-    final task = current.firstWhere((t) => t.id == taskId);
+    final task = current.firstWhere((t) => t.id == taskId,
+        orElse: () => throw Exception('Task not found'));
     final isDone = task.status == TaskStatus.done;
     final updated = task.copyWith(
       status: isDone ? TaskStatus.todo : TaskStatus.done,
@@ -54,7 +145,7 @@ class TaskListNotifier extends AsyncNotifier<List<Task>> {
 // ── Filter Enum ────────────────────────────────────────────────────────────
 enum TaskFilter { today, week, all }
 
-// ── Notifier providers (Riverpod 3) ───────────────────────────────────────
+// ── Notifier providers ─────────────────────────────────────────────────────
 class SelectedCategoryNotifier extends Notifier<String?> {
   @override
   String? build() => null;
