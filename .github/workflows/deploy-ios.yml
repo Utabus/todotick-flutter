@@ -1,0 +1,153 @@
+name: 🍎 Build & Deploy iOS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      distribution_method:
+        description: 'Distribution method'
+        required: true
+        default: 'app-store'
+        type: choice
+        options:
+          - app-store
+          - ad-hoc
+
+env:
+  FLUTTER_VERSION: '3.32.x'
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────
+  # Job 1: Tests (Ubuntu — nhanh và rẻ hơn macOS)
+  # ─────────────────────────────────────────────────────────────────
+  test:
+    name: 🧪 Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐦 Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: 📦 Get dependencies
+        run: flutter pub get
+
+      - name: 🔍 Analyze code
+        run: flutter analyze --no-fatal-infos
+
+      - name: 🧪 Run tests
+        run: flutter test
+
+  # ─────────────────────────────────────────────────────────────────
+  # Job 2: Build iOS IPA (bắt buộc dùng macOS)
+  # ─────────────────────────────────────────────────────────────────
+  build-ios:
+    name: 🏗️ Build iOS IPA
+    runs-on: macos-latest
+    needs: test
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐦 Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: 📦 Get Flutter dependencies
+        run: flutter pub get
+
+      # ── Cài Apple Distribution Certificate vào Keychain ──────────
+      - name: 🔐 Install Apple Distribution Certificate
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.APPLE_DISTRIBUTION_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+
+          # Tạo keychain tạm thời
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          # Decode và import certificate
+          echo -n "$CERTIFICATE_BASE64" | base64 --decode -o $RUNNER_TEMP/certificate.p12
+          security import $RUNNER_TEMP/certificate.p12 \
+            -P "$CERT_PASSWORD" \
+            -A -t cert -f pkcs12 \
+            -k $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
+      # ── Cài Provisioning Profile ──────────────────────────────────
+      - name: 📋 Install Provisioning Profile
+        env:
+          PROVISIONING_PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE }}
+        run: |
+          PP_PATH=$RUNNER_TEMP/profile.mobileprovision
+          echo -n "$PROVISIONING_PROFILE_BASE64" | base64 --decode -o $PP_PATH
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/
+          echo "✅ Provisioning profile installed"
+
+      # ── Thiết lập Firebase (GoogleService-Info.plist) ─────────────
+      - name: 🔥 Setup Firebase Config
+        env:
+          GOOGLE_SERVICE_INFO_PLIST: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST }}
+        run: |
+          echo -n "$GOOGLE_SERVICE_INFO_PLIST" | base64 --decode \
+            -o ios/Runner/GoogleService-Info.plist
+          echo "✅ GoogleService-Info.plist placed"
+
+      # ── Build IPA ─────────────────────────────────────────────────
+      - name: 🔨 Build iOS IPA
+        run: |
+          flutter build ipa \
+            --release \
+            --export-options-plist=ios/ExportOptions.plist \
+            --build-number=${{ github.run_number }} \
+            --build-name=1.0.${{ github.run_number }}
+
+      # ── Upload lên TestFlight ─────────────────────────────────────
+      - name: 🚀 Upload to TestFlight
+        env:
+          API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+        run: |
+          # Decode App Store Connect API key
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo -n "$API_KEY_BASE64" | base64 --decode \
+            -o ~/.appstoreconnect/private_keys/AuthKey_$API_KEY_ID.p8
+
+          # Upload IPA lên App Store Connect / TestFlight
+          xcrun altool --upload-app \
+            --file build/ios/ipa/*.ipa \
+            --type ios \
+            --apiKey "$API_KEY_ID" \
+            --apiIssuer "$API_ISSUER_ID" \
+            --verbose
+
+      # ── Lưu IPA như artifact (luôn chạy, kể cả khi upload fail) ──
+      - name: 💾 Save IPA as artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: TodoTick-iOS-${{ github.run_number }}
+          path: build/ios/ipa/*.ipa
+          retention-days: 30
+
+      # ── Dọn dẹp keychain ─────────────────────────────────────────
+      - name: 🧹 Cleanup keychain
+        if: always()
+        run: |
+          security delete-keychain $RUNNER_TEMP/app-signing.keychain-db || true

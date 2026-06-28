@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- "app-store": upload TestFlight | "ad-hoc": cài trực tiếp lên device -->
+    <key>method</key>
+    <string>app-store</string>
+
+    <!-- Thay YOUR_TEAM_ID bằng Team ID thật từ developer.apple.com/account -->
+    <key>teamID</key>
+    <string>YOUR_TEAM_ID</string>
+
+    <key>uploadBitcode</key>
+    <false/>
+
+    <key>compileBitcode</key>
+    <false/>
+
+    <key>uploadSymbols</key>
+    <true/>
+
+    <key>signingStyle</key>
+    <string>manual</string>
+
+    <key>provisioningProfiles</key>
+    <dict>
+        <!-- Thay com.yourname.todotick và tên profile của bạn -->
+        <key>com.yourname.todotick</key>
+        <string>TodoTick AppStore Distribution</string>
+    </dict>
+</dict>
+</plist>

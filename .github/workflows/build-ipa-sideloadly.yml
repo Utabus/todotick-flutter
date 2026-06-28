@@ -1,0 +1,58 @@
+name: 📦 Build IPA for Sideloadly
+
+# Trigger: push lên main hoặc chạy thủ công
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-ipa:
+    name: 🏗️ Build unsigned IPA
+    runs-on: macos-latest   # BẮT BUỘC macOS để build iOS
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐦 Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.x'
+          channel: stable
+          cache: true
+
+      - name: 📦 Get dependencies
+        run: flutter pub get
+
+      # Build IPA không cần certificate/provisioning profile
+      # Sideloadly sẽ ký sau khi download
+      - name: 🔨 Build IPA (no code signing)
+        run: |
+          flutter build ipa --release --no-codesign
+
+      # Đổi tên file cho dễ nhận biết
+      - name: 📝 Rename IPA
+        run: |
+          cd build/ios/ipa
+          mv *.ipa TodoTick-v1.0.${{ github.run_number }}.ipa
+
+      # Upload file IPA lên GitHub → bạn download về
+      - name: ⬆️ Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TodoTick-iOS-build-${{ github.run_number }}
+          path: build/ios/ipa/TodoTick-v1.0.${{ github.run_number }}.ipa
+          # Giữ file 30 ngày
+          retention-days: 30
+
+      - name: ✅ Done! Check summary
+        run: |
+          echo "### 🎉 Build thành công!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**File:** \`TodoTick-v1.0.${{ github.run_number }}.ipa\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Bước tiếp theo:**" >> $GITHUB_STEP_SUMMARY
+          echo "1. Download file IPA từ tab **Artifacts** bên dưới" >> $GITHUB_STEP_SUMMARY
+          echo "2. Cài [Sideloadly](https://sideloadly.io) trên Windows" >> $GITHUB_STEP_SUMMARY
+          echo "3. Cắm iPhone, kéo IPA vào Sideloadly → Install" >> $GITHUB_STEP_SUMMARY
