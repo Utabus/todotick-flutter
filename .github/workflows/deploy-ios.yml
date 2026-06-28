@@ -14,9 +14,6 @@ on:
           - app-store
           - ad-hoc
 
-env:
-  FLUTTER_VERSION: '3.32.x'
-
 jobs:
   # ─────────────────────────────────────────────────────────────────
   # Job 1: Tests (Ubuntu — nhanh và rẻ hơn macOS)
@@ -31,7 +28,6 @@ jobs:
       - name: 🐦 Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
@@ -59,7 +55,6 @@ jobs:
       - name: 🐦 Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
