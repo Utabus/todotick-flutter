@@ -24,6 +24,9 @@ jobs:
       - name: 📦 Get dependencies
         run: flutter pub get
 
+      - name: 🔧 Generate code (Freezed / json_serializable)
+        run: dart run build_runner build --delete-conflicting-outputs
+
       # Build IPA không cần certificate/provisioning profile
       # Sideloadly sẽ ký sau khi download
       - name: 🔨 Build IPA (no code signing)
