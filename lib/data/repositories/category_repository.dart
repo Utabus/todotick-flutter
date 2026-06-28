@@ -1,6 +1,4 @@
-import 'package:flutter/material.dart';
 import '../../domain/entities/category.dart';
-import 'package:uuid/uuid.dart';
 
 class CategoryRepository {
   final List<Category> _categories = [

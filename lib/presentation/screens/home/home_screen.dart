@@ -51,7 +51,7 @@ class HomeScreen extends ConsumerWidget {
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   itemCount: cats.length + 1,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  separatorBuilder: (_, _) => const SizedBox(width: 8),
                   itemBuilder: (context, index) {
                     if (index == cats.length) {
                       return _CategoryChip(
@@ -77,7 +77,7 @@ class HomeScreen extends ConsumerWidget {
                 ),
               ),
               loading: () => const SizedBox(height: 44),
-              error: (_, __) => const SizedBox(height: 44),
+              error: (_, _) => const SizedBox(height: 44),
             ),
 
             const SizedBox(height: 12),

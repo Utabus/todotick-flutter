@@ -22,7 +22,7 @@ class _AddTaskBottomSheetState extends ConsumerState<AddTaskBottomSheet> {
   String? _location;
   String _emoji = '📝';
   PriorityLevel _priority = PriorityLevel.level4;
-  RepeatType _repeat = RepeatType.none;
+  final RepeatType _repeat = RepeatType.none;
 
   final _emojis = ['📝', '🍽️', '💼', '🏀', '🎮', '📚', '🏠', '🚗', '🏃', '🎵'];
 
@@ -149,7 +149,7 @@ class _AddTaskBottomSheetState extends ConsumerState<AddTaskBottomSheet> {
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: _emojis.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
               itemBuilder: (_, i) => GestureDetector(
                 onTap: () => setState(() => _emoji = _emojis[i]),
                 child: AnimatedContainer(
